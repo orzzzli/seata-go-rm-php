@@ -1,0 +1,17 @@
+{
+    "name": "orz/seata-go-rm",
+    "description": "seata-go rm part for php.",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "ligongxiang",
+            "email": "386685456@qq.com"
+        }
+    ],
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "ResourceManager\\": "src/"
+        }
+    }
+}
