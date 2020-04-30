@@ -10,6 +10,9 @@
 use PHPUnit\Framework\TestCase;
 use ResourceManager\Grammar\Mysql\UpdateHandler;
 
+/**
+ * @covers \ResourceManager\Grammar\Mysql\UpdateHandler
+ * */
 class UpdateHandlerTest extends TestCase
 {
     public function testTable()

@@ -10,6 +10,9 @@
 use PHPUnit\Framework\TestCase;
 use ResourceManager\Grammar\Mysql\InsertHandler;
 
+/**
+ * @covers \ResourceManager\Grammar\Mysql\InsertHandler
+ * */
 class InsertHandlerTest extends TestCase
 {
     public function testTable()
