@@ -13,7 +13,7 @@ use ResourceManager\Exceptions\MysqlGrammarException;
 
 /**
  * Mysql语法解析器，核心目标为解析一条sql语句，返回SQLStruct结构对象。
- * 错误码：10000-10100
+ * 错误码：[10000-10100)
  * */
 class MysqlGrammar
 {

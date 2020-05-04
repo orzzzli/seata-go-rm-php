@@ -13,7 +13,7 @@ use ResourceManager\Exceptions\MysqlGrammarException;
 
 /**
  * Insert语句实际解析类
- * 错误码：11100-11200
+ * 错误码：[11100-11200)
  * */
 class InsertHandler
 {
@@ -39,7 +39,7 @@ class InsertHandler
 
     /**
      * 初始化
-     * @param $sql string 待处理insert语句
+     * @param $sql string 待处理语句
      * @throws MysqlGrammarException
      */
     public function __construct($sql)
