@@ -87,4 +87,22 @@ class SQLStruct
     {
         $this->changeColumnsListMap = $changeColumnsListMap;
     }
+
+    public function getColumnsWithId()
+    {
+        if (empty($this->changeColumnsListMap))
+            return array();
+        $temp = array_keys($this->changeColumnsListMap[0]);
+        //检查是否包含id
+        if (!in_array('id',$temp))
+            array_push($temp,'id');
+        return $temp;
+    }
+
+    public function getChangeColumns()
+    {
+        if (empty($this->changeColumnsListMap))
+            return array();
+        return array_keys($this->changeColumnsListMap[0]);
+    }
 }

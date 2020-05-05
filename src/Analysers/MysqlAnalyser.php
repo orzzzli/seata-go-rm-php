@@ -9,23 +9,24 @@
 
 namespace ResourceManager\Analysers;
 
+use ResourceManager\Exceptions\MysqlGrammarException;
+use ResourceManager\Grammar\Mysql\MysqlGrammar;
+use ResourceManager\Grammar\Mysql\SQLStruct;
 
-use ResourceManager\Interfaces\Analyser;
-
-class MysqlAnalyser implements Analyser
+/**
+ * mysql分析器
+ * */
+class MysqlAnalyser
 {
-    public function buildBeforeImage()
-    {
-        // TODO: Implement buildBeforeImage() method.
-    }
 
-    public function buildAfterImage()
+    /**
+     * 分析SQL获取Struct对象
+     * @param string $sql sql语句
+     * @return SQLStruct SQL对象
+     * @throws MysqlGrammarException
+     */
+    public function analyse(string $sql)
     {
-        // TODO: Implement buildAfterImage() method.
-    }
-
-    public function storeImage()
-    {
-        // TODO: Implement storeImage() method.
+        return MysqlGrammar::analyse($sql);
     }
 }
