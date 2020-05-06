@@ -110,19 +110,34 @@ class MysqlTransaction
         }
     }
 
+    /**
+     * 本地事务提交
+     *  a.更新本地事务状态
+     *  b.tc申请锁
+     *  c.本地事务commit
+     *  d.报告tc事务状态
+     *
+     * @throws MysqlTransactionException
+     */
     public function commit()
     {
-        // TODO: Implement commit() method.
+        $this->updateTransactionStatusToDB($this->_lastInsertId,self::STATUS_COMMIT);
+        //todo:请求tc申请锁
+        $this->commitTransactionToDB();
+        //todo:报告tc
+        $this->_status = self::STATUS_COMMIT;
     }
 
+    /**
+     * 本地事务回滚
+     *  a.本地事务rollback
+     *  b.报告tc事务状态
+     * */
     public function rollback()
     {
-        // TODO: Implement rollback() method.
-    }
-
-    public function getStatus()
-    {
-        return $this->_status;
+        $this->rollbackTransactionToDB();
+        //todo:报告tc
+        $this->_status = self::STATUS_ROLLBACK;
     }
 
     /**
@@ -151,6 +166,32 @@ class MysqlTransaction
     }
 
     /**
+     * mysql提交事务
+     *
+     * @throws MysqlTransactionException 提交事务失败
+     * todo:处理pdo error
+     */
+    protected function commitTransactionToDB()
+    {
+        $res = $this->_pdo->commit();
+        if ($res === false)
+            throw new MysqlTransactionException(MysqlTransactionException::COMMIT_LOCAL_TRANSACTION_ERROR);
+    }
+
+    /**
+     * mysql回滚事务
+     *
+     * @throws MysqlTransactionException 回滚事务失败
+     * todo:处理pdo error
+     */
+    protected function rollbackTransactionToDB()
+    {
+        $res = $this->_pdo->rollBack();
+        if ($res === false)
+            throw new MysqlTransactionException(MysqlTransactionException::ROLLBACK_LOCAL_TRANSACTION_ERROR);
+    }
+
+    /**
      * 插入本地事务表
      *
      * @throws MysqlTransactionException 插入失败
@@ -163,6 +204,21 @@ class MysqlTransaction
         if ($count === 0)
             throw new MysqlTransactionException(MysqlTransactionException::INSERT_LOCAL_TRANSACTION_ERROR);
         $this->_lastInsertId = $this->_pdo->lastInsertId();
+    }
+
+    /**
+     * 更新本地事务状态
+     *
+     * @throws MysqlTransactionException 更新失败
+     * todo:处理pdo error
+     */
+    protected function updateTransactionStatusToDB(string $ltid,int $status)
+    {
+        $updateSQL = 'UPDATE `%s` SET status = \'%s\' WHERE id = \'%s\'';
+        $sql = sprintf($updateSQL,self::TABLE_TRANSACTION,$status,$ltid);
+        $count = $this->_pdo->exec($sql);
+        if ($count === 0)
+            throw new MysqlTransactionException(MysqlTransactionException::UPDATE_LOCAL_TRANSACTION_STATUS_ERROR);
     }
 
     /**

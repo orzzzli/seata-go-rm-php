@@ -51,6 +51,11 @@ class LocalTransactionManager
         }
     }
 
+    /**
+     * 使用当前激活的本地事务执行sql
+     * @param string $sql sql语句
+     * @throws LocalTransactionManagerException
+     */
     public function do(string $sql)
     {
         if (self::$_active === null)

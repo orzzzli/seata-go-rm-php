@@ -18,6 +18,9 @@ class MysqlTransactionException extends \Exception
     const BUILD_BEFORE_ERROR = 40003;
     const TABLE_DONT_HAVE_PRIMARY_KEY_ID = 40004;
     const CONT_FIND_MATCH_PRIMARY_VALUE = 40005;
+    const UPDATE_LOCAL_TRANSACTION_STATUS_ERROR = 40006;
+    const COMMIT_LOCAL_TRANSACTION_ERROR = 40007;
+    const ROLLBACK_LOCAL_TRANSACTION_ERROR = 40008;
     const ERROR_MESSAGES = [
         //插入本地事务库失败
         self::INSERT_LOCAL_TRANSACTION_ERROR => 'insert transaction local fail.',
@@ -31,6 +34,12 @@ class MysqlTransactionException extends \Exception
         self::TABLE_DONT_HAVE_PRIMARY_KEY_ID => 'table dont have primary key id.',
         //找不到对应的主键id
         self::CONT_FIND_MATCH_PRIMARY_VALUE => 'cont find match primary value.',
+        //更新事务状态失败
+        self::UPDATE_LOCAL_TRANSACTION_STATUS_ERROR => 'update local transaction status error.',
+        //本地事务提交失败
+        self::COMMIT_LOCAL_TRANSACTION_ERROR => 'commit transaction fail.',
+        //本地事务回滚失败
+        self::ROLLBACK_LOCAL_TRANSACTION_ERROR => 'rollback transaction fail.',
     ];
     public function __construct($code)
     {

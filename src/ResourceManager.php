@@ -64,10 +64,11 @@ class ResourceManager
     /**
      * 执行sql
      * @param string $sql SQL语句
+     * @throws Exceptions\LocalTransactionManagerException
      */
     public function do(string $sql)
     {
-
+        $this->_localTransactionManager->do($sql);
     }
 
     /**
