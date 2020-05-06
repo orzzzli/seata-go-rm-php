@@ -9,6 +9,7 @@
 
 namespace ResourceManager;
 
+use ResourceManager\Analysers\MysqlAnalyser;
 use ResourceManager\Exceptions\LocalTransactionManagerException;
 use ResourceManager\LocalTransactions\MysqlTransaction;
 
@@ -54,12 +55,17 @@ class LocalTransactionManager
     /**
      * 使用当前激活的本地事务执行sql
      * @param string $sql sql语句
-     * @throws LocalTransactionManagerException
+     * @return array|false|int sql结果
+     * @throws Exceptions\MysqlGrammarException
+     * todo:优化调用结构
      */
     public function do(string $sql)
     {
-        if (self::$_active === null)
-            throw new LocalTransactionManagerException(LocalTransactionManagerException::DONT_HAVE_ACTIVE_LOCAL_TRANSACTION);
-        self::$_active->doing($sql);
+        if (self::$_active === null) {
+            $analyser = new MysqlAnalyser();
+            $struct = $analyser->analyse($sql);
+            return MysqlTransaction::doSQLToDB(null,$struct->getSqlType(),$sql);
+        }
+        return self::$_active->doing($sql);
     }
 }

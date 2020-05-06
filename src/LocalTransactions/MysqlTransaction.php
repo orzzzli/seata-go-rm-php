@@ -61,6 +61,7 @@ class MysqlTransaction
      *  d.构造afterImage
      *  e.插入undoLog
      * @param string $sql sql语句
+     * @return array|false|int SQL执行结果
      * @throws MysqlTransactionException
      * @throws \ResourceManager\Exceptions\MysqlGrammarException
      */
@@ -88,7 +89,7 @@ class MysqlTransaction
             }
         }
         //执行sql
-        $res = $this->doSQLToDB($sqlStruct->getSqlType(),$sqlStruct->getOriginSql());
+        $res = self::doSQLToDB($this->_pdo,$sqlStruct->getSqlType(),$sqlStruct->getOriginSql());
         //判断类型，构造afterImage
         if ($sqlStruct->getSqlType() === SQLStruct::SQL_TYPE_UPDATE || $sqlStruct->getSqlType() === SQLStruct::SQL_TYPE_INSERT) {
             foreach ($before as $index => $value) {
@@ -108,6 +109,7 @@ class MysqlTransaction
         foreach ($primaryV as $value) {
             $this->insertUndoToDB($this->_lastInsertId,$this->_tid,$sqlStruct->getSqlType(),$cols,$before,$after,$sqlStruct->getTable(),self::PRIMARY_KEY,$value);
         }
+        return $res;
     }
 
     /**
@@ -291,13 +293,13 @@ class MysqlTransaction
      * @param string $sql sql语句
      * @return array|false|int
      */
-    protected function doSQLToDB(int $sqlType,string $sql)
+    public static function doSQLToDB(\PDO $pdo,int $sqlType,string $sql)
     {
         if ($sqlType === SQLStruct::SQL_TYPE_SELECT) {
-            $stmt = $this->_pdo->query($sql);
+            $stmt = $pdo->query($sql);
             return $stmt->fetchAll(\PDO::FETCH_ASSOC); //获取所有
         }
-        return $this->_pdo->exec($sql);
+        return $pdo->exec($sql);
     }
 
 }
