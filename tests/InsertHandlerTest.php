@@ -8,10 +8,10 @@
  */
 
 use PHPUnit\Framework\TestCase;
-use ResourceManager\Grammar\Mysql\InsertHandler;
+use ResourceManager\Grammar\Mysql\Handlers\InsertHandler;
 
 /**
- * @covers \ResourceManager\Grammar\Mysql\InsertHandler
+ * @covers \ResourceManager\Grammar\Mysql\Handlers\InsertHandler
  * */
 class InsertHandlerTest extends TestCase
 {

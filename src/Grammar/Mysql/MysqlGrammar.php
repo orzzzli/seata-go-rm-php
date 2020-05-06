@@ -60,8 +60,8 @@ class MysqlGrammar
     public static function analyse($originSql)
     {
         $sqlType = self::getSqlType($originSql);
-        $handler = self::firstCapToUpper($sqlType).'Handler';
-        $handlerObj = new $handler();
+        $handler = 'ResourceManager\Grammar\Mysql\Handlers\\'.self::firstCapToUpper($sqlType).'Handler';
+        $handlerObj = new $handler($originSql);
         return $handlerObj->getSQLStruct();
     }
 
@@ -75,10 +75,23 @@ class MysqlGrammar
     protected static function getSqlType($originSql)
     {
         $type = substr(trim($originSql),0,6);
-        if (in_array(strtoupper($type),self::SUPPORT_SQL_TYPE)) {
+        if (!in_array(strtoupper($type),self::SUPPORT_SQL_TYPE)) {
             throw new MysqlGrammarException(10000,'mysql type not support');
         }
         return $type;
+    }
+
+    /**
+     * 根据前6个字符判断SQL类型，并判断是否支持
+     *
+     * @param $originSql string SQL语句
+     * @return null|int 解析出的SQL类型
+     * @throws MysqlGrammarException 10000，sql类型不支持
+     */
+    public static function getSqlTypeConst($originSql)
+    {
+        $type = self::getSqlType($originSql);
+        return SQLStruct::SQL_TYPE_MAP[strtoupper($type)];
     }
 
     /**

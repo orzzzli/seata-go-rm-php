@@ -8,10 +8,10 @@
  */
 
 use PHPUnit\Framework\TestCase;
-use ResourceManager\Grammar\Mysql\UpdateHandler;
+use ResourceManager\Grammar\Mysql\Handlers\UpdateHandler;
 
 /**
- * @covers \ResourceManager\Grammar\Mysql\UpdateHandler
+ * @covers \ResourceManager\Grammar\Mysql\Handlers\UpdateHandler
  * */
 class UpdateHandlerTest extends TestCase
 {

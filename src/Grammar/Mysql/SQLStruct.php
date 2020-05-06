@@ -20,6 +20,13 @@ class SQLStruct
     const SQL_TYPE_UPDATE = 3;
     const SQL_TYPE_DELETE = 4;
 
+    const SQL_TYPE_MAP = [
+        'INSERT' => self::SQL_TYPE_INSERT,
+        'SELECT' => self::SQL_TYPE_SELECT,
+        'UPDATE' => self::SQL_TYPE_UPDATE,
+        'DELETE' => self::SQL_TYPE_DELETE,
+    ];
+
     protected $originSql = '';
     protected $sqlType = self::SQL_TYPE_UNKNOW;
     protected $table = '';

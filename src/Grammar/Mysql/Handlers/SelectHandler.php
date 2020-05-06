@@ -7,10 +7,11 @@
  * @desc :
  */
 
-namespace ResourceManager\Grammar\Mysql;
+namespace ResourceManager\Grammar\Mysql\Handlers;
 
 use ResourceManager\Exceptions\MysqlGrammarException;
-
+use ResourceManager\Grammar\Mysql\MysqlGrammar;
+use ResourceManager\Grammar\Mysql\SQLStruct;
 /**
  * Select语句解析类
  * 错误码：[11300-11400)

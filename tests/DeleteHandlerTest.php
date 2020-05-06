@@ -8,10 +8,10 @@
  */
 
 use PHPUnit\Framework\TestCase;
-use ResourceManager\Grammar\Mysql\DeleteHandler;
+use ResourceManager\Grammar\Mysql\Handlers\DeleteHandler;
 
 /**
- * @covers \ResourceManager\Grammar\Mysql\DeleteHandler
+ * @covers \ResourceManager\Grammar\Mysql\Handlers\DeleteHandler
  * */
 class DeleteHandlerTest extends TestCase
 {

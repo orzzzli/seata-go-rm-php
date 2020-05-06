@@ -1,41 +1,37 @@
 <?php
 /**
  * @user: ligongxiang (ligongxiang@rouchi.com)
- * @date : 2020/5/4
+ * @date : 2020/4/30
  * @version : 1.0
- * @file : DeleteHandler.php
+ * @file : UpdateHandler.php
  * @desc :
  */
 
-namespace ResourceManager\Grammar\Mysql;
-
+namespace ResourceManager\Grammar\Mysql\Handlers;
 
 use ResourceManager\Exceptions\MysqlGrammarException;
-
+use ResourceManager\Grammar\Mysql\MysqlGrammar;
+use ResourceManager\Grammar\Mysql\SQLStruct;
 /**
- * Delete语句解析类
- * 错误码：[11200-11300)
+ * Update语句实际解析类
+ * 错误码：[11000-11100)
  * */
-class DeleteHandler
+class UpdateHandler
 {
     const KEYWORDS = [
-        'DELETE',
+        'UPDATE',
         'LOW_PRIORITY',
-        'QUICK',
         'IGNORE',
-        'FROM',
+        'SET',
         'WHERE',
         'ORDER BY',
         'LIMIT',
     ];
-    protected $sqlType = 'DELETE';
+    protected $sqlType = 'UPDATE';
     protected $sqlStruct = null;
     protected $originSql = '';
     protected $keywordMap = array();
     protected $wordList = array();
-
-    protected $columnNumbers = 0;
-    protected $tableIndex = 0;
 
     /**
      * 初始化
@@ -61,21 +57,24 @@ class DeleteHandler
         $this->sqlStruct->setSqlType($this->sqlType);
         $this->sqlStruct->setTable($this->findTable());
         $this->sqlStruct->setConditionsStr($this->findFullConditionStr());
+        $this->sqlStruct->setChangeColumnsListMap(array($this->findChangeMap()));
         return $this->sqlStruct;
     }
 
     /**
      * 根据keywordMap找到表名，去除可能分词时自动包裹的'
      *
-     * @throws MysqlGrammarException 11100,语法错误，找不到表名
+     * @throws MysqlGrammarException 11002,语法错误，找不到表名
      */
     protected function findTable()
     {
-        if (isset($this->keywordMap['FROM'])) {
-            $this->tableIndex = $this->keywordMap['FROM'];
-            return trim($this->wordList[$this->keywordMap['FROM']],'\'');
-        }
-        throw new MysqlGrammarException(11200,'delete sql syntax error, cant find table');
+        if (isset($this->keywordMap['IGNORE']))
+            return trim($this->wordList[$this->keywordMap['IGNORE']],'\'');
+        if (isset($this->keywordMap['LOW_PRIORITY']))
+            return trim($this->wordList[$this->keywordMap['LOW_PRIORITY']],'\'');
+        if (isset($this->keywordMap['UPDATE']))
+            return trim($this->wordList[$this->keywordMap['UPDATE']],'\'');
+        throw new MysqlGrammarException(11002,'update sql syntax error, cant find table');
     }
 
     /**
@@ -120,6 +119,46 @@ class DeleteHandler
             return $fullConditionStr;
         }
         return $fullConditionStr;
+    }
+
+    /**
+     * 根据keywordMap找到set修改的字段arr，设值时，去掉分词时可能设置的'
+     *
+     * @throws MysqlGrammarException 11003,语法错误，找不到set关键字
+     */
+    protected function findChangeMap()
+    {
+        if (!isset($this->keywordMap['SET']))
+            throw new MysqlGrammarException(11003,'update sql syntax error, cant find keyword set');
+        $changeMap = array();
+        $start = $this->keywordMap['SET'];
+        $end = count($this->wordList);
+        if (isset($this->keywordMap['LIMIT'])) {
+            $end = $this->keywordMap['LIMIT'];
+        }
+        if (isset($this->keywordMap['ORDER BY'])) {
+            $end = $this->keywordMap['ORDER BY'];
+        }
+        if (isset($this->keywordMap['WHERE'])) {
+            $end = $this->keywordMap['WHERE'];
+        }
+        $tempKey = false;
+        for ($i=$start;$i<$end;$i++) {
+            if (in_array($this->wordList[$i],MysqlGrammar::JOIN_WORD_SIGN))
+                continue;
+            if ($tempKey === false) {
+                $changeMap[$this->wordList[$i]] = '';
+                $tempKey = $this->wordList[$i];
+                continue;
+            }
+            if ($tempKey !== false) {
+                $tempKey = trim($tempKey,'\'');
+                $changeMap[$tempKey] = trim($this->wordList[$i],'\'');
+                $tempKey = false;
+                continue;
+            }
+        }
+        return $changeMap;
     }
 
     /**
@@ -171,7 +210,7 @@ class DeleteHandler
         if (!empty($letters))
             $this->processWord($letters);
         if ($symbolTemp !== null)
-            throw new MysqlGrammarException(11201,'delete sql syntax error');
+            throw new MysqlGrammarException(11001,'update sql syntax error');
     }
 
     /**

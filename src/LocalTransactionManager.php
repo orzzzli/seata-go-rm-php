@@ -10,7 +10,6 @@
 namespace ResourceManager;
 
 use ResourceManager\Analysers\MysqlAnalyser;
-use ResourceManager\Exceptions\LocalTransactionManagerException;
 use ResourceManager\LocalTransactions\MysqlTransaction;
 
 /**
@@ -67,5 +66,13 @@ class LocalTransactionManager
             return MysqlTransaction::doSQLToDB(null,$struct->getSqlType(),$sql);
         }
         return self::$_active->doing($sql);
+    }
+
+    public function commit()
+    {
+        if (self::$_active === null) {
+            return '';
+        }
+        return self::$_active->commit();
     }
 }
