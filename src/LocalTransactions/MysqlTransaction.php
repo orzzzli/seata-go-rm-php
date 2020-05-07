@@ -13,6 +13,7 @@ use ResourceManager\Analysers\MysqlAnalyser;
 use ResourceManager\Connector\Mysql\MysqlConnector;
 use ResourceManager\Exceptions\MysqlTransactionException;
 use ResourceManager\Grammar\Mysql\SQLStruct;
+use ResourceManager\Exceptions\MysqlGrammarException;
 
 class MysqlTransaction
 {
@@ -28,12 +29,10 @@ class MysqlTransaction
     protected $_analyser = null;
 
     protected $_tid = '';
-    protected $_sign = '';
     protected $_desc = '';
     protected $_status = self::STATUS_ACTIVE;
-    public function __construct(MysqlConnector $connector,string $tid,string $sign,string $desc = '')
+    public function __construct(MysqlConnector $connector,string $tid = '',string $desc = '')
     {
-        $this->_sign = $sign;
         $this->_desc = $desc;
         $this->_tid = $tid;
 
@@ -51,6 +50,9 @@ class MysqlTransaction
     public function start()
     {
         $this->_connection->begin();
+        //非全局事务
+        if ($this->_tid === '')
+            return;
         //本地事务对象入库.
         $insertSQL = $this->buildInsertSQL();
         list($count,$lastInsertId) = $this->_connection->insert($insertSQL);
@@ -69,12 +71,16 @@ class MysqlTransaction
      * @param string $sql sql语句
      * @return array|false|int SQL执行结果
      * @throws MysqlTransactionException
-     * @throws \ResourceManager\Exceptions\MysqlGrammarException
+     * @throws MysqlGrammarException
      */
     public function doing(string $sql)
     {
         //分析sql
         $sqlStruct = $this->_analyser->analyse($sql);
+        //非全局事务直接执行
+        if ($this->_tid === '') {
+            return $this->doSQLToDB($sqlStruct->getSqlType(),$sqlStruct->getOriginSql());
+        }
         $primaryV = array();
         $cols = array();
         $before = array();
@@ -155,6 +161,11 @@ class MysqlTransaction
      */
     public function commit()
     {
+        if ($this->_tid === '') {
+            //todo:请求tc申请锁
+            $this->_connection->commit();
+            return;
+        }
         $updateSQL = $this->buildUpdateStatusSQL(self::STATUS_COMMIT);
         $count = $this->_connection->update($updateSQL);
         if (empty($count))
@@ -173,6 +184,8 @@ class MysqlTransaction
     public function rollback()
     {
         $this->_connection->rollback();
+        if ($this->_tid === '')
+            return;
         //todo:报告tc
         $this->_status = self::STATUS_ROLLBACK;
     }

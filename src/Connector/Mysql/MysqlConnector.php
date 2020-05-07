@@ -103,4 +103,12 @@ class MysqlConnector
     {
         $this->_instance->rollBack();
     }
+
+    /**
+     * 获取连接唯一str
+     * */
+    public function getDsn()
+    {
+        return $this->_dsn;
+    }
 }

@@ -28,7 +28,7 @@ class MysqlTransactionTest extends TestCase
     }
     public function testStartAndCommit()
     {
-        $transaction = new MysqlTransaction($this->initConnector(),'test','a','test1');
+        $transaction = new MysqlTransaction($this->initConnector(),'test','test1');
         $transaction->start();
         $newConn = $this->initConnector();
         $sql = 'SELECT * FROM `transaction_local` WHERE tid = "test";';
@@ -43,7 +43,7 @@ class MysqlTransactionTest extends TestCase
 
     public function testStartAndRollback()
     {
-        $transaction = new MysqlTransaction($this->initConnector(),'test','a','test1');
+        $transaction = new MysqlTransaction($this->initConnector(),'test','test1');
         $transaction->start();
         $newConn = $this->initConnector();
         $sql = 'SELECT * FROM `transaction_local` WHERE tid = "test";';
@@ -56,7 +56,7 @@ class MysqlTransactionTest extends TestCase
 
     public function testDoingInsertOnce()
     {
-        $transaction = new MysqlTransaction($this->initConnector(),'test_insert_once','insert_once','test1');
+        $transaction = new MysqlTransaction($this->initConnector(),'test_insert_once','test1');
         $transaction->start();
         $sql = 'SELECT * FROM `test_transaction` WHERE test_a = "a";';
         $transaction->doing($sql);
@@ -95,7 +95,7 @@ class MysqlTransactionTest extends TestCase
 
     public function testDoingInsertBatch()
     {
-        $transaction = new MysqlTransaction($this->initConnector(),'test_insert_batch','insert_batch','test1');
+        $transaction = new MysqlTransaction($this->initConnector(),'test_insert_batch','test1');
         $transaction->start();
         $sql = 'SELECT * FROM `test_transaction` WHERE test_a = "a";';
         $transaction->doing($sql);
@@ -139,7 +139,7 @@ class MysqlTransactionTest extends TestCase
 
     public function testDoingUpdate()
     {
-        $transaction = new MysqlTransaction($this->initConnector(),'test_update','update_once','test1');
+        $transaction = new MysqlTransaction($this->initConnector(),'test_update','test1');
         $transaction->start();
         $sql = 'SELECT * FROM `test_transaction` WHERE test_a = "a";';
         $transaction->doing($sql);
@@ -176,12 +176,12 @@ class MysqlTransactionTest extends TestCase
 
     public function testDoingDelete()
     {
-        $transaction = new MysqlTransaction($this->initConnector(),'test_delete','update_once','test1');
+        $transaction = new MysqlTransaction($this->initConnector(),'test_delete','test1');
         $transaction->start();
         $sqlb = 'INSERT INTO `test_transaction` (`test_a`,`test_b`) value ("a","b");';
         $transaction->doing($sqlb);
         $transaction->commit();
-        $transaction2 = new MysqlTransaction($this->initConnector(),'test_delete','update_once','test1');
+        $transaction2 = new MysqlTransaction($this->initConnector(),'test_delete','test1');
         $transaction2->start();
         $sqlc = 'DELETE FROM `test_transaction` where test_a = "a";';
         $transaction2->doing($sqlc);
