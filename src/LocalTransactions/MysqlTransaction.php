@@ -10,6 +10,7 @@
 namespace ResourceManager\LocalTransactions;
 
 use ResourceManager\Analysers\MysqlAnalyser;
+use ResourceManager\Connector\Mysql\MysqlConnector;
 use ResourceManager\Exceptions\MysqlTransactionException;
 use ResourceManager\Grammar\Mysql\SQLStruct;
 
@@ -23,20 +24,20 @@ class MysqlTransaction
     const TABLE_UNDO = 'transaction_undo';
     const PRIMARY_KEY = 'id';
     protected $_lastInsertId = 0;
-    protected $_pdo = null;
+    protected $_connection = null;
     protected $_analyser = null;
 
     protected $_tid = '';
     protected $_sign = '';
     protected $_desc = '';
     protected $_status = self::STATUS_ACTIVE;
-    public function __construct(\PDO $pdo,string $sign,string $desc = '',string $tid = '')
+    public function __construct(MysqlConnector $connector,string $tid,string $sign,string $desc = '')
     {
-        $this->_pdo = $pdo;
         $this->_sign = $sign;
         $this->_desc = $desc;
         $this->_tid = $tid;
 
+        $this->_connection = $connector;
         $this->_analyser = new MysqlAnalyser();
     }
 
@@ -49,8 +50,13 @@ class MysqlTransaction
      */
     public function start()
     {
-        $this->startTransactionToDB();
-        $this->insertTransactionToDB();
+        $this->_connection->begin();
+        //本地事务对象入库.
+        $insertSQL = $this->buildInsertSQL();
+        list($count,$lastInsertId) = $this->_connection->insert($insertSQL);
+        if ($count === 0)
+            throw new MysqlTransactionException(MysqlTransactionException::INSERT_LOCAL_TRANSACTION_ERROR);
+        $this->_lastInsertId = $lastInsertId;
     }
 
     /**
@@ -78,7 +84,7 @@ class MysqlTransaction
             $beforeSQL = $this->buildBeforeImageSQL($sqlStruct);
             if (empty($beforeSQL))
                 throw new MysqlTransactionException(MysqlTransactionException::BUILD_BEFORE_ERROR);
-            $rows = $this->selectFromDBGetArr($beforeSQL);
+            $rows = $this->_connection->query($beforeSQL);
             foreach ($rows as &$row) {
                 if (!isset($row[self::PRIMARY_KEY]))
                     throw new MysqlTransactionException(MysqlTransactionException::TABLE_DONT_HAVE_PRIMARY_KEY_ID);
@@ -89,14 +95,14 @@ class MysqlTransaction
             }
         }
         //执行sql
-        $res = self::doSQLToDB($this->_pdo,$sqlStruct->getSqlType(),$sqlStruct->getOriginSql());
+        $res = $this->doSQLToDB($sqlStruct->getSqlType(),$sqlStruct->getOriginSql());
         //判断类型，构造afterImage
         if ($sqlStruct->getSqlType() === SQLStruct::SQL_TYPE_UPDATE || $sqlStruct->getSqlType() === SQLStruct::SQL_TYPE_INSERT) {
             foreach ($before as $index => $value) {
                 if (!isset($primaryV[$index]))
                     throw new MysqlTransactionException(MysqlTransactionException::CONT_FIND_MATCH_PRIMARY_VALUE);
                 $afterSQL = $this->buildAfterImageSQL($sqlStruct,self::PRIMARY_KEY,$primaryV[$index]);
-                $rows = $this->selectFromDBGetArr($afterSQL);
+                $rows = $this->_connection->query($afterSQL);
                 foreach ($rows as &$row) {
                     if (!isset($row[self::PRIMARY_KEY]))
                         throw new MysqlTransactionException(MysqlTransactionException::TABLE_DONT_HAVE_PRIMARY_KEY_ID);
@@ -107,7 +113,10 @@ class MysqlTransaction
         }
         //插入undoLog
         foreach ($primaryV as $value) {
-            $this->insertUndoToDB($this->_lastInsertId,$this->_tid,$sqlStruct->getSqlType(),$cols,$before,$after,$sqlStruct->getTable(),self::PRIMARY_KEY,$value);
+            $undoSQL = $this->buildInsertUndoSQL($sqlStruct->getSqlType(),$cols,$before,$after,$sqlStruct->getTable(),self::PRIMARY_KEY,$value);
+            list($count,$lastInsertId) = $this->_connection->insert($undoSQL);
+            if ($count === 0)
+                throw new MysqlTransactionException(MysqlTransactionException::INSERT_UNDO_ERROR);
         }
         return $res;
     }
@@ -123,9 +132,12 @@ class MysqlTransaction
      */
     public function commit()
     {
-        $this->updateTransactionStatusToDB($this->_lastInsertId,self::STATUS_COMMIT);
+        $updateSQL = $this->buildUpdateStatusSQL(self::STATUS_COMMIT);
+        $count = $this->_connection->update($updateSQL);
+        if ($count === 0)
+            throw new MysqlTransactionException(MysqlTransactionException::UPDATE_LOCAL_TRANSACTION_STATUS_ERROR);
         //todo:请求tc申请锁
-        $this->commitTransactionToDB();
+        $this->_connection->commit();
         //todo:报告tc
         $this->_status = self::STATUS_COMMIT;
     }
@@ -137,97 +149,13 @@ class MysqlTransaction
      * */
     public function rollback()
     {
-        $this->rollbackTransactionToDB();
+        $this->_connection->rollback();
         //todo:报告tc
         $this->_status = self::STATUS_ROLLBACK;
     }
 
     /**
-     * 从DB中获取select结果
-     * @param string $sql select语句
-     * @return array 结果listMap
-     */
-    protected function selectFromDBGetArr(string $sql)
-    {
-        $stmt = $this->_pdo->query($sql);
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC); //获取所有
-        return $rows;
-    }
-
-    /**
-     * mysql开启事务
-     *
-     * @throws MysqlTransactionException 开启事务失败
-     * todo:处理pdo error
-     */
-    protected function startTransactionToDB()
-    {
-        $res = $this->_pdo->beginTransaction();
-        if ($res === false)
-            throw new MysqlTransactionException(MysqlTransactionException::BEGIN_LOCAL_TRANSACTION_ERROR);
-    }
-
-    /**
-     * mysql提交事务
-     *
-     * @throws MysqlTransactionException 提交事务失败
-     * todo:处理pdo error
-     */
-    protected function commitTransactionToDB()
-    {
-        $res = $this->_pdo->commit();
-        if ($res === false)
-            throw new MysqlTransactionException(MysqlTransactionException::COMMIT_LOCAL_TRANSACTION_ERROR);
-    }
-
-    /**
-     * mysql回滚事务
-     *
-     * @throws MysqlTransactionException 回滚事务失败
-     * todo:处理pdo error
-     */
-    protected function rollbackTransactionToDB()
-    {
-        $res = $this->_pdo->rollBack();
-        if ($res === false)
-            throw new MysqlTransactionException(MysqlTransactionException::ROLLBACK_LOCAL_TRANSACTION_ERROR);
-    }
-
-    /**
-     * 插入本地事务表
-     *
-     * @throws MysqlTransactionException 插入失败
-     * todo:处理pdo error
-     */
-    protected function insertTransactionToDB()
-    {
-        $insertSQL = $this->buildInsertSQL();
-        $count = $this->_pdo->exec($insertSQL);
-        if ($count === 0)
-            throw new MysqlTransactionException(MysqlTransactionException::INSERT_LOCAL_TRANSACTION_ERROR);
-        $this->_lastInsertId = $this->_pdo->lastInsertId();
-    }
-
-    /**
-     * 更新本地事务状态
-     *
-     * @throws MysqlTransactionException 更新失败
-     * todo:处理pdo error
-     */
-    protected function updateTransactionStatusToDB(string $ltid,int $status)
-    {
-        $updateSQL = 'UPDATE `%s` SET status = \'%s\' WHERE id = \'%s\'';
-        $sql = sprintf($updateSQL,self::TABLE_TRANSACTION,$status,$ltid);
-        $count = $this->_pdo->exec($sql);
-        if ($count === 0)
-            throw new MysqlTransactionException(MysqlTransactionException::UPDATE_LOCAL_TRANSACTION_STATUS_ERROR);
-    }
-
-    /**
-     * 插入undo表
-     *
-     * @param string $ltid 本地事务id
-     * @param string $tid 全局事务id
+     * 工具方法，拼insert语句
      * @param int $type sql类型
      * @param array $cols 变更字段
      * @param array $before 变更前值
@@ -235,16 +163,12 @@ class MysqlTransaction
      * @param string $table 表名
      * @param string $primaryK 主键名
      * @param string $primaryV 主键值
-     * @throws MysqlTransactionException 插入失败
-     * todo:处理pdo error
+     * @return string insert语句
      */
-    protected function insertUndoToDB(string $ltid,string $tid,int $type,array $cols,array $before,array $after,string $table,string $primaryK,string $primaryV)
+    protected function buildInsertUndoSQL(int $type,array $cols,array $before,array $after,string $table,string $primaryK,string $primaryV)
     {
         $temp = 'INSERT INTO `%s` (ltid,tid,type,cols,before,after,table,primary_key,primary_value) VALUE (\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\')';
-        $insertSQL = sprintf($temp,self::TABLE_UNDO,$ltid,$tid,$type,implode(',',$cols),implode(',',$before),implode(',',$after),$table,$primaryK,$primaryV);
-        $count = $this->_pdo->exec($insertSQL);
-        if ($count === 0)
-            throw new MysqlTransactionException(MysqlTransactionException::INSERT_UNDO_ERROR);
+        return sprintf($temp,self::TABLE_UNDO,$this->_lastInsertId,$this->_tid,$type,implode(',',$cols),implode(',',$before),implode(',',$after),$table,$primaryK,$primaryV);
     }
 
     /**
@@ -288,18 +212,33 @@ class MysqlTransaction
     }
 
     /**
+     * 工具方法，拼update语句
+     * @param int $status 状态
+     * @return string update语句
+     */
+    protected function buildUpdateStatusSQL(int $status)
+    {
+        $updateSQL = 'UPDATE `%s` SET status = \'%s\' WHERE id = \'%s\'';
+        return sprintf($updateSQL,self::TABLE_TRANSACTION,$status,$this->_lastInsertId);
+    }
+
+    /**
      * 工具方法，执行mysql语句
      * @param int $sqlType sql类型
      * @param string $sql sql语句
      * @return array|false|int
      */
-    public static function doSQLToDB(\PDO $pdo,int $sqlType,string $sql)
+    protected function doSQLToDB(int $sqlType,string $sql)
     {
-        if ($sqlType === SQLStruct::SQL_TYPE_SELECT) {
-            $stmt = $pdo->query($sql);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC); //获取所有
-        }
-        return $pdo->exec($sql);
+        if ($sqlType === SQLStruct::SQL_TYPE_SELECT)
+            return $this->_connection->query($sql);
+        if ($sqlType === SQLStruct::SQL_TYPE_INSERT)
+            return $this->_connection->insert($sql);
+        if ($sqlType === SQLStruct::SQL_TYPE_UPDATE)
+            return $this->_connection->update($sql);
+        if ($sqlType === SQLStruct::SQL_TYPE_DELETE)
+            return $this->_connection->delete($sql);
+        return false;
     }
 
 }
