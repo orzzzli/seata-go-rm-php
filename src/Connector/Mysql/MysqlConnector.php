@@ -13,7 +13,7 @@ namespace ResourceManager\Connector\Mysql;
  * Mysql连接类
  *  考虑到读写库以及跨库的情况，非单例
  * */
-class Connector
+class MysqlConnector
 {
     protected $_username = '';
     protected $_password = '';
