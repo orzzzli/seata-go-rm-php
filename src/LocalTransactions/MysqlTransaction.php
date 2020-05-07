@@ -54,7 +54,7 @@ class MysqlTransaction
         //本地事务对象入库.
         $insertSQL = $this->buildInsertSQL();
         list($count,$lastInsertId) = $this->_connection->insert($insertSQL);
-        if ($count === 0)
+        if (empty($count))
             throw new MysqlTransactionException(MysqlTransactionException::INSERT_LOCAL_TRANSACTION_ERROR);
         $this->_lastInsertId = $lastInsertId;
     }
@@ -97,7 +97,7 @@ class MysqlTransaction
         //执行sql
         $res = $this->doSQLToDB($sqlStruct->getSqlType(),$sqlStruct->getOriginSql());
         //判断类型，构造afterImage
-        if ($sqlStruct->getSqlType() === SQLStruct::SQL_TYPE_UPDATE || $sqlStruct->getSqlType() === SQLStruct::SQL_TYPE_INSERT) {
+        if ($sqlStruct->getSqlType() === SQLStruct::SQL_TYPE_UPDATE) {
             foreach ($before as $index => $value) {
                 if (!isset($primaryV[$index]))
                     throw new MysqlTransactionException(MysqlTransactionException::CONT_FIND_MATCH_PRIMARY_VALUE);
@@ -111,11 +111,34 @@ class MysqlTransaction
                 }
             }
         }
+        if ($sqlStruct->getSqlType() === SQLStruct::SQL_TYPE_INSERT) {
+            list($count,$lastInsertId) = $res;
+            $insertTimes = count($sqlStruct->getChangeColumnsListMap());
+            for ($i=0;$i<$insertTimes;$i++) {
+                $primaryV[] = $lastInsertId+$i;
+            }
+            foreach ($primaryV as $value) {
+                $afterSQL = $this->buildAfterImageSQL($sqlStruct,self::PRIMARY_KEY,$value);
+                $rows = $this->_connection->query($afterSQL);
+                foreach ($rows as &$row) {
+                    if (!isset($row[self::PRIMARY_KEY]))
+                        throw new MysqlTransactionException(MysqlTransactionException::TABLE_DONT_HAVE_PRIMARY_KEY_ID);
+                    unset($row[self::PRIMARY_KEY]);
+                    $after[] = array_values($row);
+                }
+            }
+        }
         //插入undoLog
-        foreach ($primaryV as $value) {
-            $undoSQL = $this->buildInsertUndoSQL($sqlStruct->getSqlType(),$cols,$before,$after,$sqlStruct->getTable(),self::PRIMARY_KEY,$value);
+        foreach ($primaryV as $index => $value) {
+            $col = $cols[$index] ?? array();
+            $oneBefore = $before[$index] ?? array();
+            $oneAfter = $after[$index] ?? array();
+            $undoSQL = $this->buildInsertUndoSQL($sqlStruct->getSqlType(),$col,$oneBefore,$oneAfter,$sqlStruct->getTable(),self::PRIMARY_KEY,$value);
+            if ($sqlStruct->getSqlType() === SQLStruct::SQL_TYPE_DELETE) {
+                var_dump($undoSQL);
+            }
             list($count,$lastInsertId) = $this->_connection->insert($undoSQL);
-            if ($count === 0)
+            if (empty($count))
                 throw new MysqlTransactionException(MysqlTransactionException::INSERT_UNDO_ERROR);
         }
         return $res;
@@ -134,7 +157,7 @@ class MysqlTransaction
     {
         $updateSQL = $this->buildUpdateStatusSQL(self::STATUS_COMMIT);
         $count = $this->_connection->update($updateSQL);
-        if ($count === 0)
+        if (empty($count))
             throw new MysqlTransactionException(MysqlTransactionException::UPDATE_LOCAL_TRANSACTION_STATUS_ERROR);
         //todo:请求tc申请锁
         $this->_connection->commit();
@@ -167,7 +190,7 @@ class MysqlTransaction
      */
     protected function buildInsertUndoSQL(int $type,array $cols,array $before,array $after,string $table,string $primaryK,string $primaryV)
     {
-        $temp = 'INSERT INTO `%s` (ltid,tid,type,cols,before,after,table,primary_key,primary_value) VALUE (\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\')';
+        $temp = 'INSERT INTO `%s` (`ltid`,`tid`,`type`,`cols`,`before`,`after`,`table`,`primary_key`,`primary_value`) VALUE (\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\')';
         return sprintf($temp,self::TABLE_UNDO,$this->_lastInsertId,$this->_tid,$type,implode(',',$cols),implode(',',$before),implode(',',$after),$table,$primaryK,$primaryV);
     }
 
@@ -177,7 +200,7 @@ class MysqlTransaction
      * */
     protected function buildInsertSQL()
     {
-        $temp = 'INSERT INTO `%s` (tid,desc,status) VALUE (\'%s\',\'%s\',\'%s\')';
+        $temp = 'INSERT INTO `%s` (`tid`,`desc`,`status`) VALUE (\'%s\',\'%s\',\'%s\')';
         return sprintf($temp,self::TABLE_TRANSACTION,$this->_tid,$this->_desc,$this->_status);
     }
 
