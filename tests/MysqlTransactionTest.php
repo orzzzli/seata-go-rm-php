@@ -204,31 +204,4 @@ class MysqlTransactionTest extends TestCase
         $delSql = 'DELETE FROM `transaction_undo` where tid = "test_delete";';
         $newConn->delete($delSql);
     }
-
-    public function testGlobalRollback()
-    {
-        $transaction = new MysqlTransaction($this->initConnector(),'test_grollback','test1');
-        $transaction->start();
-        $sqlb = 'INSERT INTO `test_transaction` (`test_a`,`test_b`) value ("a","b");';
-        $transaction->doing($sqlb);
-        $sqlc = 'UPDATE `test_transaction` SET `test_a` = "c", `test_b` = "d";';
-        $transaction->doing($sqlc);
-        $sqlb = 'INSERT INTO `test_transaction` (`test_a`,`test_b`) value ("e","f");';
-        $transaction->doing($sqlb);
-        $sqlb = 'DELETE FROM `test_transaction` where test_a = "e";';
-        $transaction->doing($sqlb);
-        $transaction->commit();
-        $transaction->grollback();
-        $newConn = $this->initConnector();
-        $sql = 'SELECT * FROM `test_transaction` WHERE test_a = "a";';
-        $res = $newConn->query($sql);
-        $this->assertEquals(0,count($res));
-        $sql = 'SELECT * FROM `test_transaction` WHERE test_a = "c";';
-        $res = $newConn->query($sql);
-        $this->assertEquals(0,count($res));
-        $delSql = 'DELETE FROM `transaction_local` where tid = "test_grollback";';
-        $newConn->delete($delSql);
-        $delSql = 'DELETE FROM `transaction_undo` where tid = "test_grollback";';
-        $newConn->delete($delSql);
-    }
 }

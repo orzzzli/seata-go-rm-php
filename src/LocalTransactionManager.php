@@ -118,8 +118,9 @@ class LocalTransactionManager
     public function commit()
     {
         if (self::$_active === null)
-            return null;
-        return self::$_active->commit();
+            return;
+        self::$_active->commit();
+        self::$_active = null;
     }
 
     /**
@@ -130,19 +131,143 @@ class LocalTransactionManager
     public function rollback()
     {
         if (self::$_active === null)
-            return null;
-        return self::$_active->rollback();
+            return;
+        self::$_active->rollback();
+        self::$_active = null;
     }
 
     /**
      * 全局回滚
      *
-     * @throws MysqlTransactionException
-     * */
-    public function grollback()
+     *  a.倒序查出该全局事务包含的本地事务
+     *  b.依次根据undo构建语句回滚
+     * @param string $tid 待回滚的全局事务
+     * @throws LocalTransactionManagerException
+     */
+    public function grollback(string $tid)
     {
-        if (self::$_active === null)
-            return null;
-        return self::$_active->grollback();
+        if (empty($tid)) {
+            return;
+        }
+        $undoSQL = $this->buildSelectUndoSQL($tid);
+        $res = self::$_connector->query($undoSQL);
+        foreach ($res as $undo) {
+            $sqlType = $undo['type'] ?? SQLStruct::SQL_TYPE_UNKNOW;
+            $table = $undo['table'] ?? '';
+            if (empty($table))
+                throw new LocalTransactionManagerException(LocalTransactionManagerException::UNDO_MISS_TABLE_ERROR);
+            $primaryK = $undo['primary_key'] ?? '';
+            if (empty($table))
+                throw new LocalTransactionManagerException(LocalTransactionManagerException::UNDO_MISS_PRIMARY_KEY_ERROR);
+            $primaryV = $undo['primary_value'] ?? '';
+            if (empty($table))
+                throw new LocalTransactionManagerException(LocalTransactionManagerException::UNDO_MISS_PRIMARY_VALUE_ERROR);
+            if ($sqlType == SQLStruct::SQL_TYPE_INSERT) {
+                $sql = $this->buildUndoInsertSQL($table,$primaryK,$primaryV);
+                $count = self::$_connector->delete($sql);
+                if (empty($count))
+                    throw new LocalTransactionManagerException(LocalTransactionManagerException::UNDO_INSERT_ERROR);
+            }
+            $cols = $undo['cols'] ?? '';
+            $before = $undo['before'] ?? '';
+            if ($sqlType == SQLStruct::SQL_TYPE_UPDATE) {
+                if (empty($cols) || empty($before))
+                    throw new LocalTransactionManagerException(LocalTransactionManagerException::UNDO_UPDATE_MISS_COLS_OR_BEFORE);
+                $colList = explode(',',$cols);
+                $beforeList = explode(',',$before);
+                if (count($colList) != count($beforeList))
+                    throw new LocalTransactionManagerException(LocalTransactionManagerException::UNDO_UPDATE_MISS_COLS_OR_BEFORE);
+                $sql = $this->buildUndoUpdateSQL($table,$colList,$beforeList,$primaryK,$primaryV);
+                $count = self::$_connector->update($sql);
+                if (empty($count))
+                    throw new LocalTransactionManagerException(LocalTransactionManagerException::UNDO_UPDATE_ERROR);
+            }
+            if ($sqlType == SQLStruct::SQL_TYPE_DELETE) {
+                if (empty($cols) || empty($before))
+                    throw new LocalTransactionManagerException(LocalTransactionManagerException::UNDO_UPDATE_MISS_COLS_OR_BEFORE);
+                $colList = explode(',',$cols);
+                $beforeList = explode(',',$before);
+                if (count($colList) != count($beforeList))
+                    throw new LocalTransactionManagerException(LocalTransactionManagerException::UNDO_UPDATE_MISS_COLS_OR_BEFORE);
+                $sql = $this->buildUndoDeleteSQL($table,$colList,$beforeList,$primaryK,$primaryV);
+                list($count,$lastInsertId) = self::$_connector->insert($sql);
+                if (empty($count))
+                    throw new LocalTransactionManagerException(LocalTransactionManagerException::UNDO_DELETE_ERROR);
+            }
+        }
+    }
+
+    /**
+     * 工具方法，拼select语句
+     * @param string $tid 全局事务id
+     * @return string update语句
+     */
+    protected function buildSelectUndoSQL(string $tid)
+    {
+        $selectSQL = 'SELECT * FROM `%s` WHERE tid = \'%s\' order by id desc';
+        return sprintf($selectSQL,MysqlTransaction::TABLE_UNDO,$tid);
+    }
+
+    /**
+     * 工具方法，undoInsert语句，delete语句
+     * @param string $table 表名
+     * @param string $primaryK 主键
+     * @param string $primaryV 主键值
+     * @return string 语句
+     */
+    protected function buildUndoInsertSQL(string $table,string $primaryK,string $primaryV)
+    {
+        $sql = 'DELETE FROM `%s` WHERE %s="%s"';
+        return sprintf($sql,$table,$primaryK,$primaryV);
+    }
+
+    /**
+     * 工具方法，undoUpdate语句，update语句
+     * @param string $table 表名
+     * @param array $cols 列名list
+     * @param array $befores 变更前list
+     * @param string $primaryK 主键
+     * @param string $primaryV 主键值
+     * @return string 语句
+     */
+    protected function buildUndoUpdateSQL(string $table,array $cols,array $befores,string $primaryK,string $primaryV)
+    {
+        $setStr = '';
+        foreach ($cols as $k => $v) {
+            $setStr .= $v.'="'.$befores[$k].'"';
+            if ($k != count($cols) - 1)
+                $setStr .= ',';
+        }
+        $sql = 'UPDATE `%s` SET %s WHERE %s = "%s"';
+        return sprintf($sql,$table,$setStr,$primaryK,$primaryV);
+    }
+
+    /**
+     * 工具方法，undoDelete语句，insert语句
+     * @param string $table 表名
+     * @param array $cols 列名list
+     * @param array $befores 变更前list
+     * @param string $primaryK 主键
+     * @param string $primaryV 主键值
+     * @return string 语句
+     */
+    protected function buildUndoDeleteSQL(string $table,array $cols,array $befores,string $primaryK,string $primaryV)
+    {
+        array_push($cols,$primaryK);
+        array_push($befores,$primaryV);
+        $colStr = '';
+        foreach ($cols as $k => $col) {
+            $colStr .= '`'.$col.'`';
+            if ($k != count($cols) - 1)
+                $colStr .= ',';
+        }
+        $valueStr = '';
+        foreach ($befores as $k => $col) {
+            $valueStr .= '"'.$col.'"';
+            if ($k != count($befores) - 1)
+                $valueStr .= ',';
+        }
+        $sql = 'INSERT INTO `%s` (%s) VALUE (%s)';
+        return sprintf($sql,$table,$colStr,$valueStr);
     }
 }
