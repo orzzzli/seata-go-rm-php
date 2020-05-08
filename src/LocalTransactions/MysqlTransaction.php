@@ -12,6 +12,7 @@ namespace ResourceManager\LocalTransactions;
 use ResourceManager\Analysers\MysqlAnalyser;
 use ResourceManager\Connector\Mysql\MysqlConnector;
 use ResourceManager\Exceptions\MysqlTransactionException;
+use ResourceManager\Grammar\Mysql\MysqlGrammar;
 use ResourceManager\Grammar\Mysql\SQLStruct;
 use ResourceManager\Exceptions\MysqlGrammarException;
 
@@ -140,9 +141,6 @@ class MysqlTransaction
             $oneBefore = $before[$index] ?? array();
             $oneAfter = $after[$index] ?? array();
             $undoSQL = $this->buildInsertUndoSQL($sqlStruct->getSqlType(),$col,$oneBefore,$oneAfter,$sqlStruct->getTable(),self::PRIMARY_KEY,$value);
-            if ($sqlStruct->getSqlType() === SQLStruct::SQL_TYPE_DELETE) {
-                var_dump($undoSQL);
-            }
             list($count,$lastInsertId) = $this->_connection->insert($undoSQL);
             if (empty($count))
                 throw new MysqlTransactionException(MysqlTransactionException::INSERT_UNDO_ERROR);
@@ -188,6 +186,65 @@ class MysqlTransaction
             return;
         //todo:报告tc
         $this->_status = self::STATUS_ROLLBACK;
+    }
+
+    /**
+     * 全局事务回滚
+     *  a.倒序查出该全局事务包含的本地事务
+     *  b.依次根据undo构建语句回滚
+     * */
+    public function grollback()
+    {
+        if ($this->_tid === '') {
+            $this->rollback();
+            return;
+        }
+        $undoSQL = $this->buildSelectUndoSQL($this->_tid);
+        $res = $this->_connection->query($undoSQL);
+        foreach ($res as $undo) {
+            $sqlType = $undo['type'] ?? SQLStruct::SQL_TYPE_UNKNOW;
+            $table = $undo['table'] ?? '';
+            if (empty($table))
+                throw new MysqlTransactionException(MysqlTransactionException::UNDO_MISS_TABLE_ERROR);
+            $primaryK = $undo['primary_key'] ?? '';
+            if (empty($table))
+                throw new MysqlTransactionException(MysqlTransactionException::UNDO_MISS_PRIMARY_KEY_ERROR);
+            $primaryV = $undo['primary_value'] ?? '';
+            if (empty($table))
+                throw new MysqlTransactionException(MysqlTransactionException::UNDO_MISS_PRIMARY_VALUE_ERROR);
+            if ($sqlType == SQLStruct::SQL_TYPE_INSERT) {
+                $sql = $this->buildUndoInsertSQL($table,$primaryK,$primaryV);
+                $count = $this->_connection->delete($sql);
+                if (empty($count))
+                    throw new MysqlTransactionException(MysqlTransactionException::UNDO_INSERT_ERROR);
+            }
+            $cols = $undo['cols'] ?? '';
+            $before = $undo['before'] ?? '';
+            if ($sqlType == SQLStruct::SQL_TYPE_UPDATE) {
+                if (empty($cols) || empty($before))
+                    throw new MysqlTransactionException(MysqlTransactionException::UNDO_UPDATE_MISS_COLS_OR_BEFORE);
+                $colList = explode(',',$cols);
+                $beforeList = explode(',',$before);
+                if (count($colList) != count($beforeList))
+                    throw new MysqlTransactionException(MysqlTransactionException::UNDO_UPDATE_MISS_COLS_OR_BEFORE);
+                $sql = $this->buildUndoUpdateSQL($table,$colList,$beforeList,$primaryK,$primaryV);
+                $count = $this->_connection->update($sql);
+                if (empty($count))
+                    throw new MysqlTransactionException(MysqlTransactionException::UNDO_UPDATE_ERROR);
+            }
+            if ($sqlType == SQLStruct::SQL_TYPE_DELETE) {
+                if (empty($cols) || empty($before))
+                    throw new MysqlTransactionException(MysqlTransactionException::UNDO_UPDATE_MISS_COLS_OR_BEFORE);
+                $colList = explode(',',$cols);
+                $beforeList = explode(',',$before);
+                if (count($colList) != count($beforeList))
+                    throw new MysqlTransactionException(MysqlTransactionException::UNDO_UPDATE_MISS_COLS_OR_BEFORE);
+                $sql = $this->buildUndoDeleteSQL($table,$colList,$beforeList,$primaryK,$primaryV);
+                list($count,$lastInsertId) = $this->_connection->insert($sql);
+                if (empty($count))
+                    throw new MysqlTransactionException(MysqlTransactionException::UNDO_DELETE_ERROR);
+            }
+        }
     }
 
     /**
@@ -256,6 +313,80 @@ class MysqlTransaction
     {
         $updateSQL = 'UPDATE `%s` SET status = \'%s\' WHERE id = \'%s\'';
         return sprintf($updateSQL,self::TABLE_TRANSACTION,$status,$this->_lastInsertId);
+    }
+
+    /**
+     * 工具方法，拼select语句
+     * @param string $tid 全局事务id
+     * @return string update语句
+     */
+    protected function buildSelectUndoSQL(string $tid)
+    {
+        $selectSQL = 'SELECT * FROM `%s` WHERE tid = \'%s\' order by id desc';
+        return sprintf($selectSQL,self::TABLE_UNDO,$tid);
+    }
+
+    /**
+     * 工具方法，undoInsert语句，delete语句
+     * @param string $table 表名
+     * @param string $primaryK 主键
+     * @param string $primaryV 主键值
+     * @return string 语句
+     */
+    protected function buildUndoInsertSQL(string $table,string $primaryK,string $primaryV)
+    {
+        $sql = 'DELETE FROM `%s` WHERE %s="%s"';
+        return sprintf($sql,$table,$primaryK,$primaryV);
+    }
+
+    /**
+     * 工具方法，undoUpdate语句，update语句
+     * @param string $table 表名
+     * @param array $cols 列名list
+     * @param array $befores 变更前list
+     * @param string $primaryK 主键
+     * @param string $primaryV 主键值
+     * @return string 语句
+     */
+    protected function buildUndoUpdateSQL(string $table,array $cols,array $befores,string $primaryK,string $primaryV)
+    {
+        $setStr = '';
+        foreach ($cols as $k => $v) {
+            $setStr .= $v.'="'.$befores[$k].'"';
+            if ($k != count($cols) - 1)
+                $setStr .= ',';
+        }
+        $sql = 'UPDATE `%s` SET %s WHERE %s = "%s"';
+        return sprintf($sql,$table,$setStr,$primaryK,$primaryV);
+    }
+
+    /**
+     * 工具方法，undoDelete语句，insert语句
+     * @param string $table 表名
+     * @param array $cols 列名list
+     * @param array $befores 变更前list
+     * @param string $primaryK 主键
+     * @param string $primaryV 主键值
+     * @return string 语句
+     */
+    protected function buildUndoDeleteSQL(string $table,array $cols,array $befores,string $primaryK,string $primaryV)
+    {
+        array_push($cols,$primaryK);
+        array_push($befores,$primaryV);
+        $colStr = '';
+        foreach ($cols as $k => $col) {
+            $colStr .= '`'.$col.'`';
+            if ($k != count($cols) - 1)
+                $colStr .= ',';
+        }
+        $valueStr = '';
+        foreach ($befores as $k => $col) {
+            $valueStr .= '"'.$col.'"';
+            if ($k != count($befores) - 1)
+                $valueStr .= ',';
+        }
+        $sql = 'INSERT INTO `%s` (%s) VALUE (%s)';
+        return sprintf($sql,$table,$colStr,$valueStr);
     }
 
     /**

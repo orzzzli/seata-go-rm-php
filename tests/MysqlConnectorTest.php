@@ -15,17 +15,14 @@ use ResourceManager\Connector\Mysql\MysqlConnector;
  * */
 class MysqlConnectorTest extends TestCase
 {
-    const HOST = '127.0.0.1';
-    const UNAME = 'root';
-    const PASS = '';
-    const DBNAME = 'test';
-    const PORT = '3306';
-    const CHARSET = 'utf8';
-
+    protected function getConnector()
+    {
+        return new MysqlConnector($_ENV['host'],$_ENV['username'],$_ENV['password'],$_ENV['database'],$_ENV['port'],$_ENV['charset']);
+    }
     public function testQuery()
     {
         $sql = 'SELECT * FROM `user` WHERE id = 1;';
-        $connect = new MysqlConnector(self::HOST,self::UNAME,self::PASS,self::DBNAME,self::PORT,self::CHARSET);
+        $connect = $this->getConnector();
         $res = $connect->query($sql);
         $this->assertEquals(1,$res[0]['id']);
 
@@ -37,7 +34,7 @@ class MysqlConnectorTest extends TestCase
     public function testInsert()
     {
         $sql = 'INSERT INTO `transaction_local` (`tid`,`desc`) value ("1","test")';
-        $connect = new MysqlConnector(self::HOST,self::UNAME,self::PASS,self::DBNAME,self::PORT,self::CHARSET);
+        $connect = $this->getConnector();
         list($count,$lastId) = $connect->insert($sql);
         $this->assertEquals(1,$count);
         $this->assertNotEmpty($lastId);
@@ -51,7 +48,7 @@ class MysqlConnectorTest extends TestCase
     public function testUpdate()
     {
         $sql = 'UPDATE `transaction_local` SET `desc` = "testUpdate" limit 1';
-        $connect = new MysqlConnector(self::HOST,self::UNAME,self::PASS,self::DBNAME,self::PORT,self::CHARSET);
+        $connect = $this->getConnector();
         $count = $connect->update($sql);
         $this->assertEquals(1,$count);
 
@@ -60,17 +57,9 @@ class MysqlConnectorTest extends TestCase
         $this->assertEquals(1,$count);
     }
 
-    public function testDelete()
-    {
-        $sql = 'DELETE FROM `transaction_local` limit 1';
-        $connect = new MysqlConnector(self::HOST,self::UNAME,self::PASS,self::DBNAME,self::PORT,self::CHARSET);
-        $count = $connect->delete($sql);
-        $this->assertEquals(1,$count);
-    }
-
     public function testTransactionCommit()
     {
-        $connect = new MysqlConnector(self::HOST,self::UNAME,self::PASS,self::DBNAME,self::PORT,self::CHARSET);
+        $connect = $this->getConnector();
         $connect->begin();
         $sql = 'INSERT INTO `transaction_local` (`tid`,`desc`) value ("1","test")';
         list($count,$lastId) = $connect->insert($sql);
@@ -82,7 +71,7 @@ class MysqlConnectorTest extends TestCase
 
     public function testTransactionRollback()
     {
-        $connect = new MysqlConnector(self::HOST,self::UNAME,self::PASS,self::DBNAME,self::PORT,self::CHARSET);
+        $connect = $this->getConnector();
         $connect->begin();
         $sql = 'INSERT INTO `transaction_local` (`tid`,`desc`) value ("1","test")';
         list($count,$lastId) = $connect->insert($sql);
@@ -90,5 +79,13 @@ class MysqlConnectorTest extends TestCase
         $sql = 'SELECT * FROM `transaction_local` WHERE id = '.$lastId.';';
         $res = $connect->query($sql);
         $this->assertEquals(0,count($res));
+    }
+
+    public function testDelete()
+    {
+        $sql = 'DELETE FROM `transaction_local` where tid = "1" or tid = "2"';
+        $connect = $this->getConnector();
+        $count = $connect->delete($sql);
+        $this->assertEquals(4,$count);
     }
 }

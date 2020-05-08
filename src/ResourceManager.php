@@ -14,28 +14,24 @@ namespace ResourceManager;
  * */
 class ResourceManager
 {
-    /**
-     * 分析器，单例
-     * */
-    protected $_analyser = null;
+    //todo:变更连接/配置处理方式
+    const HOST = '';
+    const UNAME = '';
+    const PASS = '';
+    const DBNAME = '';
+    const PORT = '';
+    const CHARSET = '';
 
     /**
      * 本地事务管理器，单例
      * */
     protected $_localTransactionManager = null;
 
-    /**
-     * DB代理，单例
-     * */
-    protected $_dbProxy = null;
-
     protected static $_instance = null;
 
     protected function __construct()
     {
-        $this->_analyser = null;
-        $this->_localTransactionManager = LocalTransactionManager::getInstance();
-        $this->_dbProxy = null;
+        $this->_localTransactionManager = LocalTransactionManager::getInstance(self::HOST,self::UNAME,self::PASS,self::DBNAME);
     }
 
     /**
@@ -51,20 +47,21 @@ class ResourceManager
     /**
      * 开启一个本地事务.
      *  此方法只是对外的一个接口，实际执行调用本地事务管理器注册一个本地事务.
-     * @param string $sign 连接的唯一签名
      * @param string $desc 一句话描述
      * @param string $tid 全局事务id
      * @throws Exceptions\MysqlTransactionException
+     * @throws Exceptions\LocalTransactionManagerException
      */
-    public function start(string $sign,string $desc = '',string $tid = '')
+    public function begin(string $desc = '',string $tid = '')
     {
-        $this->_localTransactionManager->register($sign,$desc,$tid);
+        $this->_localTransactionManager->begin($desc,$tid);
     }
 
     /**
      * 执行sql
      * @param string $sql SQL语句
-     * @throws Exceptions\LocalTransactionManagerException
+     * @throws Exceptions\MysqlGrammarException
+     * @throws Exceptions\MysqlTransactionException
      */
     public function do(string $sql)
     {
@@ -73,17 +70,31 @@ class ResourceManager
 
     /**
      * 提交一个本地事务
-     * */
+     *
+     * @throws Exceptions\MysqlTransactionException
+     */
     public function commit()
     {
-
+        $this->_localTransactionManager->commit();
     }
 
     /**
      * 回滚一个本地事务
-     * */
+     *
+     * @throws Exceptions\MysqlTransactionException
+     */
     public function rollback()
     {
+        $this->_localTransactionManager->rollback();
+    }
 
+    /**
+     * 全局回滚方法
+     *
+     * @throws Exceptions\MysqlTransactionException
+     */
+    public function grollback()
+    {
+        $this->_localTransactionManager->grollback();
     }
 }

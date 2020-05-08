@@ -133,4 +133,16 @@ class LocalTransactionManager
             return null;
         return self::$_active->rollback();
     }
+
+    /**
+     * 全局回滚
+     *
+     * @throws MysqlTransactionException
+     * */
+    public function grollback()
+    {
+        if (self::$_active === null)
+            return null;
+        return self::$_active->grollback();
+    }
 }
